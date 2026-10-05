@@ -130,7 +130,7 @@ export function UserAdministrationPage() {
           <h2 className="h5">{editing ? "Editar usuario" : "Nuevo usuario"}</h2>
           <input className="form-control mb-2" placeholder="Nombre completo" value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} required />
           <input className="form-control mb-2" type="email" placeholder="Correo" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
-          {editing?.id !== user.id && <input className="form-control mb-2" type="password" placeholder={editing ? "Nueva contrasena (opcional)" : "Contrasena (minimo 12)"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!editing} minLength="12" />}
+          {editing?.id !== user.id && <input className="form-control mb-2" type="password" placeholder={editing ? "Nueva contrasena (opcional)" : "Contrasena (minimo 8)"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!editing} minLength="8" />}
           <select className="form-select mb-2" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
             <option value="active">Activo</option>
             <option value="inactive">Inactivo</option>
@@ -188,8 +188,8 @@ export function ProfilePage() {
   return <><h1 className="h3 mb-4">Mi perfil</h1><form className="card card-body shadow-sm col-lg-5" onSubmit={submit}>
     <h2 className="h5">Cambiar contrasena</h2>
     <input className="form-control mb-2" type="password" placeholder="Contrasena actual" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} required />
-    <input className="form-control mb-2" type="password" placeholder="Nueva contrasena (minimo 12)" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} minLength="12" required />
-    <input className="form-control mb-3" type="password" placeholder="Repetir nueva contrasena" value={form.confirmation} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} minLength="12" required />
+    <input className="form-control mb-2" type="password" placeholder="Nueva contrasena (minimo 8)" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} minLength="8" required />
+    <input className="form-control mb-3" type="password" placeholder="Repetir nueva contrasena" value={form.confirmation} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} minLength="8" required />
     <button className="btn btn-primary align-self-start">Actualizar contrasena</button>
   </form></>;
 }
