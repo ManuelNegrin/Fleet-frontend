@@ -22,11 +22,16 @@ const emptyWorkOrderFilters = { search: "", vehicleId: "", status: "", dateExact
 
 const useCollection = (endpoint) => {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const refresh = useCallback(async () => {
-    try { setItems(await apiFetch(endpoint)); } catch (value) { fail(value); }
+    setLoading(true);
+    setError(null);
+    try { setItems(await apiFetch(endpoint)); } catch (value) { setError(value); fail(value); }
+    finally { setLoading(false); }
   }, [endpoint]);
   useEffect(() => { refresh(); }, [refresh]);
-  return { items, refresh };
+  return { items, loading, error, refresh };
 };
 
 export function TripsPage() {
@@ -116,6 +121,8 @@ export function TripsPage() {
       <div className="col-lg-4"><form className="card card-body shadow-sm" onSubmit={submit}>
         <h2 className="h5">{editing ? "Editar viaje" : "Nuevo viaje"}</h2>
         <select className="form-select mb-2" value={form.customerId} onChange={(event) => set("customerId", event.target.value)} required><option value="">Cliente *</option>{customersForForm.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>
+        {customers.error && <div className="alert alert-danger py-2" role="alert">No se pudo cargar la lista de clientes. Volvé a intentar con Actualizar.</div>}
+        {!customers.loading && !customers.error && !editing && activeCustomers.length === 0 && <div className="alert alert-warning py-2" role="status">{customers.items.length ? "Todos los clientes están inactivos. Para crear un viaje, activá un cliente o creá uno nuevo." : "No hay clientes registrados. Creá uno antes de cargar un viaje."} <button type="button" className="btn btn-link p-0 align-baseline" onClick={() => navigate("/clientes")}>Ir a Clientes</button></div>}
         <select className="form-select mb-2" value={form.trailerVehicleId} onChange={(event) => set("trailerVehicleId", event.target.value)} required><option value="">Remolque *</option>{trailersForForm.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}</select>
         <select className="form-select mb-2" value={form.truckVehicleId} onChange={(event) => set("truckVehicleId", event.target.value)}><option value="">Camion (opcional al planificar)</option>{trucksForForm.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}</select>
         <select className="form-select mb-2" value={form.driverId} onChange={(event) => set("driverId", event.target.value)} required><option value="">Chofer *</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}</select>
@@ -127,7 +134,7 @@ export function TripsPage() {
         <input className="form-control mb-2" placeholder="Virada / rotacion" value={form.rotation} onChange={(event) => set("rotation", event.target.value)} />
         <textarea className="form-control mb-2" placeholder="Notas" value={form.notes} onChange={(event) => set("notes", event.target.value)} />
         {editing && <><select className="form-select mb-2" value={form.status} onChange={(event) => set("status", event.target.value)}><option value="pending">Pendiente</option><option value="in_progress">En curso</option><option value="completed">Completado</option><option value="cancelled">Cancelado</option></select>{form.status === "completed" && <input className="form-control mb-2" type="date" value={form.arrivalAt} onChange={(event) => set("arrivalAt", event.target.value)} />}</>}
-        <div className="d-flex gap-2"><button className="btn btn-primary" type="submit" disabled={isSubmitting}>{isSubmitting ? (editing ? "Guardando..." : "Creando viaje...") : (editing ? "Guardar cambios" : "Crear viaje")}</button>{editing && <button type="button" className="btn btn-outline-secondary" onClick={reset} disabled={isSubmitting}>Cancelar</button>}</div>
+        <div className="d-flex gap-2"><button className="btn btn-primary" type="submit" disabled={isSubmitting || (!editing && (customers.loading || customers.error || activeCustomers.length === 0))}>{isSubmitting ? (editing ? "Guardando..." : "Creando viaje...") : (editing ? "Guardar cambios" : "Crear viaje")}</button>{editing && <button type="button" className="btn btn-outline-secondary" onClick={reset} disabled={isSubmitting}>Cancelar</button>}</div>
       </form></div>
       <div className="col-lg-8">
         <div className="card card-body shadow-sm mb-3">
