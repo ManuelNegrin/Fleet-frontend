@@ -13,7 +13,7 @@ const displayDate = (value) => {
 };
 const emptyTrip = {
   customerId: "", trailerVehicleId: "", truckVehicleId: "", driverId: "", origin: "", destination: "",
-  departureAt: "", arrivalAt: "", cargoType: "refrigerated", containerNumber: "", rotation: "", notes: "", status: "pending",
+  departureAt: "", unloadingAt: "", arrivalAt: "", cargoType: "refrigerated", containerNumber: "", rotation: "", notes: "", status: "pending",
 };
 const emptyWorkOrder = { vehicleId: "", checkInAt: "", type: "", odometer: "", description: "" };
 const createIdempotencyKey = () => window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -69,7 +69,7 @@ export function TripsPage() {
   const trailersForForm = selectOptions(availableTrailers, form.trailerVehicleId);
   const trucksForForm = selectOptions(availableTrucks, form.truckVehicleId);
 
-  const prepare = () => ({ ...form, truckVehicleId: form.truckVehicleId || null, arrivalAt: form.arrivalAt || null, containerNumber: form.cargoType === "container" ? form.containerNumber : null });
+  const prepare = () => ({ ...form, truckVehicleId: form.truckVehicleId || null, unloadingAt: form.unloadingAt || null, arrivalAt: form.arrivalAt || null, containerNumber: form.cargoType === "container" ? form.containerNumber : null });
   const submit = async (event) => {
     event.preventDefault();
     if (submitLock.current) return;
@@ -87,7 +87,7 @@ export function TripsPage() {
     setEditing(trip);
     setForm({
       customerId: trip.customerId || "", trailerVehicleId: trip.trailerVehicleId || "", truckVehicleId: trip.truckVehicleId || "", driverId: trip.driverId || "",
-      origin: trip.origin || "", destination: trip.destination || "", departureAt: dateValue(trip.departureAt), arrivalAt: dateValue(trip.arrivalAt),
+      origin: trip.origin || "", destination: trip.destination || "", departureAt: dateValue(trip.departureAt), unloadingAt: dateValue(trip.unloadingAt), arrivalAt: dateValue(trip.arrivalAt),
       cargoType: trip.cargoType || "refrigerated", containerNumber: trip.containerNumber || "", rotation: trip.rotation || "", notes: trip.notes || "", status: trip.status,
     });
   };
@@ -115,18 +115,19 @@ export function TripsPage() {
     <div className="row g-4">
       <div className="col-lg-4"><form className="card card-body shadow-sm" onSubmit={submit}>
         <h2 className="h5">{editing ? "Editar viaje" : "Nuevo viaje"}</h2>
-        <select className="form-select mb-2" value={form.customerId} onChange={(event) => set("customerId", event.target.value)} required><option value="">Cliente *</option>{customersForForm.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select>
-        <select className="form-select mb-2" value={form.trailerVehicleId} onChange={(event) => set("trailerVehicleId", event.target.value)} required><option value="">Remolque *</option>{trailersForForm.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}</select>
-        <select className="form-select mb-2" value={form.truckVehicleId} onChange={(event) => set("truckVehicleId", event.target.value)}><option value="">Camion (opcional al planificar)</option>{trucksForForm.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}</select>
-        <select className="form-select mb-2" value={form.driverId} onChange={(event) => set("driverId", event.target.value)} required><option value="">Chofer *</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}</select>
-        <input className="form-control mb-2" placeholder="Origen" value={form.origin} onChange={(event) => set("origin", event.target.value)} required />
-        <input className="form-control mb-2" placeholder="Destino" value={form.destination} onChange={(event) => set("destination", event.target.value)} required />
-        <input className="form-control mb-2" type="date" value={form.departureAt} onChange={(event) => set("departureAt", event.target.value)} required />
-        <select className="form-select mb-2" value={form.cargoType} onChange={(event) => set("cargoType", event.target.value)}><option value="refrigerated">Camara de frio</option><option value="container">Contenedor</option></select>
-        {form.cargoType === "container" && <input className="form-control mb-2" placeholder="Numero de contenedor" value={form.containerNumber} onChange={(event) => set("containerNumber", event.target.value)} required />}
-        <input className="form-control mb-2" placeholder="Virada / rotacion" value={form.rotation} onChange={(event) => set("rotation", event.target.value)} />
-        <textarea className="form-control mb-2" placeholder="Notas" value={form.notes} onChange={(event) => set("notes", event.target.value)} />
-        {editing && <><select className="form-select mb-2" value={form.status} onChange={(event) => set("status", event.target.value)}><option value="pending">Pendiente</option><option value="in_progress">En curso</option><option value="completed">Completado</option><option value="cancelled">Cancelado</option></select>{form.status === "completed" && <input className="form-control mb-2" type="date" value={form.arrivalAt} onChange={(event) => set("arrivalAt", event.target.value)} />}</>}
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-customer">Cliente *</label><select id="trip-customer" className="form-select" value={form.customerId} onChange={(event) => set("customerId", event.target.value)} required><option value="">Seleccionar cliente</option>{customersForForm.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-trailer">Remolque *</label><select id="trip-trailer" className="form-select" value={form.trailerVehicleId} onChange={(event) => set("trailerVehicleId", event.target.value)} required><option value="">Seleccionar remolque</option>{trailersForForm.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}</select></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-truck">Camión</label><select id="trip-truck" className="form-select" value={form.truckVehicleId} onChange={(event) => set("truckVehicleId", event.target.value)}><option value="">Sin asignar al planificar</option>{trucksForForm.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.licensePlate}</option>)}</select></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-driver">Chofer *</label><select id="trip-driver" className="form-select" value={form.driverId} onChange={(event) => set("driverId", event.target.value)} required><option value="">Seleccionar chofer</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}</select></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-origin">Origen *</label><input id="trip-origin" className="form-control" value={form.origin} onChange={(event) => set("origin", event.target.value)} required /></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-destination">Destino *</label><input id="trip-destination" className="form-control" value={form.destination} onChange={(event) => set("destination", event.target.value)} required /></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-loading-date">Fecha de carga *</label><input id="trip-loading-date" className="form-control" type="date" value={form.departureAt} onChange={(event) => set("departureAt", event.target.value)} required /></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-unloading-date">Fecha de descarga</label><input id="trip-unloading-date" className="form-control" type="date" min={form.departureAt || undefined} value={form.unloadingAt} onChange={(event) => set("unloadingAt", event.target.value)} /></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-cargo-type">Tipo de carga *</label><select id="trip-cargo-type" className="form-select" value={form.cargoType} onChange={(event) => set("cargoType", event.target.value)} required><option value="refrigerated">Cámara de frío</option><option value="container">Contenedor</option></select></div>
+        {form.cargoType === "container" && <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-container-number">Número de contenedor *</label><input id="trip-container-number" className="form-control" value={form.containerNumber} onChange={(event) => set("containerNumber", event.target.value)} required /></div>}
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-rotation">Virada / rotación</label><input id="trip-rotation" className="form-control" value={form.rotation} onChange={(event) => set("rotation", event.target.value)} /></div>
+        <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-notes">Notas</label><textarea id="trip-notes" className="form-control" value={form.notes} onChange={(event) => set("notes", event.target.value)} /></div>
+        {editing && <><div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-status">Estado</label><select id="trip-status" className="form-select" value={form.status} onChange={(event) => set("status", event.target.value)}><option value="pending">Pendiente</option><option value="in_progress">En curso</option><option value="completed">Completado</option><option value="cancelled">Cancelado</option></select></div>{form.status === "completed" && <div className="mb-3"><label className="form-label small fw-semibold" htmlFor="trip-arrival-date">Fecha de finalización</label><input id="trip-arrival-date" className="form-control" type="date" value={form.arrivalAt} onChange={(event) => set("arrivalAt", event.target.value)} /></div>}</>}
         <div className="d-flex gap-2"><button className="btn btn-primary" type="submit" disabled={isSubmitting}>{isSubmitting ? (editing ? "Guardando..." : "Creando viaje...") : (editing ? "Guardar cambios" : "Crear viaje")}</button>{editing && <button type="button" className="btn btn-outline-secondary" onClick={reset} disabled={isSubmitting}>Cancelar</button>}</div>
       </form></div>
       <div className="col-lg-8">
@@ -136,7 +137,7 @@ export function TripsPage() {
             <div className="col-md-6"><input className="form-control" placeholder="Filtrar por destino" value={filters.destination} onChange={(event) => setFilter("destination", event.target.value)} /></div>
             <div className="col-md-6"><select className="form-select" value={filters.trailerVehicleId} onChange={(event) => setFilter("trailerVehicleId", event.target.value)}><option value="">Todos los remolques</option>{vehicles.items.filter((item) => item.type === "trailer").map((item) => <option key={item.id} value={item.id}>{item.licensePlate}</option>)}</select></div>
             <div className="col-md-6"><select className="form-select" value={filters.truckVehicleId} onChange={(event) => setFilter("truckVehicleId", event.target.value)}><option value="">Todos los camiones</option>{vehicles.items.filter((item) => item.type === "truck").map((item) => <option key={item.id} value={item.id}>{item.licensePlate}</option>)}</select></div>
-            <div className="col-md-4"><label className="form-label small mb-1">Fecha puntual</label><input className="form-control" type="date" value={filters.dateExact} onChange={(event) => setFilter("dateExact", event.target.value)} /></div>
+            <div className="col-md-4"><label className="form-label small mb-1">Fecha de carga puntual</label><input className="form-control" type="date" value={filters.dateExact} onChange={(event) => setFilter("dateExact", event.target.value)} /></div>
             <div className="col-md-4"><label className="form-label small mb-1">Desde</label><input className="form-control" type="date" disabled={Boolean(filters.dateExact)} value={filters.dateFrom} onChange={(event) => setFilter("dateFrom", event.target.value)} /></div>
             <div className="col-md-4"><label className="form-label small mb-1">Hasta</label><input className="form-control" type="date" disabled={Boolean(filters.dateExact)} value={filters.dateTo} onChange={(event) => setFilter("dateTo", event.target.value)} /></div>
           </div>
@@ -146,7 +147,7 @@ export function TripsPage() {
           <table className="table mb-0">
             <thead><tr><th>Ruta</th><th>Virada</th><th>Recursos</th><th>Carga</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody>{filteredTrips.map((trip) => <tr key={trip.id}>
-              <td><strong>{trip.origin} - {trip.destination}</strong><br /><small>{displayDate(trip.departureAt)}</small></td>
+              <td><strong>{trip.origin} - {trip.destination}</strong><br /><small>Carga: {displayDate(trip.departureAt)} · Descarga: {displayDate(trip.unloadingAt)}</small></td>
               <td>{trip.rotation || "-"}</td>
               <td>{trip.trailer?.licensePlate || "-"}<br />{trip.truck?.licensePlate || "Sin camion"}</td>
               <td>{trip.cargoType === "container" ? `Contenedor ${trip.containerNumber}` : "Camara de frio"}</td>
