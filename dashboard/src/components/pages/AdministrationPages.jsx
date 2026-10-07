@@ -5,6 +5,7 @@ import { useAuth } from "../../context/useAuth";
 import { apiFetch } from "../../services/api";
 import { changeOwnPassword } from "../../services/auth";
 import { confirmToast } from "../ConfirmationToast";
+import FormField from "../FormField";
 
 const roleLabels = {
   Administrator: "Administrador",
@@ -128,13 +129,13 @@ export function UserAdministrationPage() {
       <div className="col-lg-4">
         <form className="card card-body shadow-sm" onSubmit={submit}>
           <h2 className="h5">{editing ? "Editar usuario" : "Nuevo usuario"}</h2>
-          <input className="form-control mb-2" placeholder="Nombre completo" value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} required />
-          <input className="form-control mb-2" type="email" placeholder="Correo" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
-          {editing?.id !== user.id && <input className="form-control mb-2" type="password" placeholder={editing ? "Nueva contrasena (opcional)" : "Contrasena (minimo 8)"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!editing} minLength="8" />}
-          <select className="form-select mb-2" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
+          <FormField label="Nombre completo"><input className="form-control" value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} required /></FormField>
+          <FormField label="Correo electrónico"><input className="form-control" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></FormField>
+          {editing?.id !== user.id && <FormField label={editing ? "Nueva contraseña (opcional)" : "Contraseña (mínimo 8 caracteres)"}><input className="form-control" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!editing} minLength="8" autoComplete="new-password" /></FormField>}
+          <FormField label="Estado"><select className="form-select" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
             <option value="active">Activo</option>
             <option value="inactive">Inactivo</option>
-          </select>
+          </select></FormField>
           {editing?.id === user.id ? <p className="small text-muted mb-2">Tus perfiles se conservan. La contrasena tambien se cambia desde Mi perfil.</p> : <fieldset className="mb-3">
             <legend className="fs-6">Perfiles</legend>
             {roles.map((role) => <label className="form-check" key={role.id}>
@@ -187,9 +188,9 @@ export function ProfilePage() {
 
   return <><h1 className="h3 mb-4">Mi perfil</h1><form className="card card-body shadow-sm col-lg-5" onSubmit={submit}>
     <h2 className="h5">Cambiar contrasena</h2>
-    <input className="form-control mb-2" type="password" placeholder="Contrasena actual" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} required />
-    <input className="form-control mb-2" type="password" placeholder="Nueva contrasena (minimo 8)" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} minLength="8" required />
-    <input className="form-control mb-3" type="password" placeholder="Repetir nueva contrasena" value={form.confirmation} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} minLength="8" required />
+    <FormField label="Contraseña actual"><input className="form-control" type="password" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} autoComplete="current-password" required /></FormField>
+    <FormField label="Nueva contraseña (mínimo 8 caracteres)"><input className="form-control" type="password" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} autoComplete="new-password" minLength="8" required /></FormField>
+    <FormField label="Repetir nueva contraseña"><input className="form-control" type="password" value={form.confirmation} onChange={(event) => setForm({ ...form, confirmation: event.target.value })} autoComplete="new-password" minLength="8" required /></FormField>
     <button className="btn btn-primary align-self-start">Actualizar contrasena</button>
   </form></>;
 }

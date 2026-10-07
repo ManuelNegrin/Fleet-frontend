@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { apiFetch } from "../../services/api";
 import { confirmToast } from "../ConfirmationToast";
+import FormField from "../FormField";
 
 const statuses = {
   pending: "Pendiente",
@@ -620,7 +621,9 @@ export function TripsPage() {
           <div className="card card-body shadow-sm mb-3">
             <div className="row g-2">
               <div className="col-md-6">
+                <label className="form-label small fw-semibold" htmlFor="trip-filter-origin">Origen</label>
                 <input
+                  id="trip-filter-origin"
                   className="form-control"
                   placeholder="Filtrar por origen"
                   value={filters.origin}
@@ -628,7 +631,9 @@ export function TripsPage() {
                 />
               </div>
               <div className="col-md-6">
+                <label className="form-label small fw-semibold" htmlFor="trip-filter-destination">Destino</label>
                 <input
+                  id="trip-filter-destination"
                   className="form-control"
                   placeholder="Filtrar por destino"
                   value={filters.destination}
@@ -638,7 +643,9 @@ export function TripsPage() {
                 />
               </div>
               <div className="col-md-6">
+                <label className="form-label small fw-semibold" htmlFor="trip-filter-trailer">Remolque</label>
                 <select
+                  id="trip-filter-trailer"
                   className="form-select"
                   value={filters.trailerVehicleId}
                   onChange={(event) =>
@@ -656,7 +663,9 @@ export function TripsPage() {
                 </select>
               </div>
               <div className="col-md-6">
+                <label className="form-label small fw-semibold" htmlFor="trip-filter-truck">Camión</label>
                 <select
+                  id="trip-filter-truck"
                   className="form-select"
                   value={filters.truckVehicleId}
                   onChange={(event) =>
@@ -938,15 +947,15 @@ export function WorkOrdersPage() {
         <div className="col-lg-4">
           <form className="card card-body shadow-sm" onSubmit={submit}>
             <h2 className="h5">Nueva orden</h2>
-            <select
-              className="form-select mb-2"
+            <FormField label="Vehículo *"><select
+              className="form-select"
               value={form.vehicleId}
               onChange={(event) =>
                 setForm({ ...form, vehicleId: event.target.value })
               }
               required
             >
-              <option value="">Vehiculo *</option>
+              <option value="">Seleccionar vehículo</option>
               {vehicles.items
                 .filter(
                   (vehicle) =>
@@ -959,42 +968,40 @@ export function WorkOrdersPage() {
                     {vehicle.licensePlate}
                   </option>
                 ))}
-            </select>
-            <input
-              className="form-control mb-2"
+            </select></FormField>
+            <FormField label="Fecha de ingreso *"><input
+              className="form-control"
               type="date"
               value={form.checkInAt}
               onChange={(event) =>
                 setForm({ ...form, checkInAt: event.target.value })
               }
               required
-            />
-            <input
-              className="form-control mb-2"
-              placeholder="Tipo de trabajo"
+            /></FormField>
+            <FormField label="Tipo de trabajo"><input
+              className="form-control"
               value={form.type}
               onChange={(event) =>
                 setForm({ ...form, type: event.target.value })
               }
-            />
-            <input
-              className="form-control mb-2"
+            /></FormField>
+            <FormField label="Odómetro (km)"><input
+              className="form-control"
               type="number"
-              placeholder="Odometro"
+              min="0"
               value={form.odometer}
               onChange={(event) =>
                 setForm({ ...form, odometer: event.target.value })
               }
-            />
-            <textarea
-              className="form-control mb-3"
-              placeholder="Descripcion *"
+            /></FormField>
+            <FormField label="Descripción del trabajo *"><textarea
+              className="form-control"
               value={form.description}
               onChange={(event) =>
                 setForm({ ...form, description: event.target.value })
               }
               required
-            />
+            /></FormField>
             <button className="btn btn-primary">Crear orden</button>
           </form>
         </div>
@@ -1002,7 +1009,9 @@ export function WorkOrdersPage() {
           <div className="card card-body shadow-sm mb-3">
             <div className="row g-2">
               <div className="col-md-5">
+                <label className="form-label small fw-semibold" htmlFor="work-order-search">Buscar orden</label>
                 <input
+                  id="work-order-search"
                   className="form-control"
                   placeholder="Buscar por vehiculo, tipo o descripcion"
                   value={filters.search}
@@ -1010,7 +1019,9 @@ export function WorkOrdersPage() {
                 />
               </div>
               <div className="col-md-4">
+                <label className="form-label small fw-semibold" htmlFor="work-order-vehicle">Vehículo</label>
                 <select
+                  id="work-order-vehicle"
                   className="form-select"
                   value={filters.vehicleId}
                   onChange={(event) =>
@@ -1026,7 +1037,9 @@ export function WorkOrdersPage() {
                 </select>
               </div>
               <div className="col-md-3">
+                <label className="form-label small fw-semibold" htmlFor="work-order-status">Estado</label>
                 <select
+                  id="work-order-status"
                   className="form-select"
                   value={filters.status}
                   onChange={(event) => setFilter("status", event.target.value)}
