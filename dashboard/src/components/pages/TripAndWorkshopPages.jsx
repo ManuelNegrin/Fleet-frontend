@@ -37,6 +37,7 @@ const emptyTrip = {
 const emptyWorkOrder = {
   vehicleId: "",
   checkInAt: "",
+  checkOutAt: "",
   type: "",
   odometer: "",
   description: "",
@@ -850,6 +851,7 @@ export function WorkOrdersPage() {
   const orders = useCollection("/api/ordenes-taller");
   const vehicles = useCollection("/api/vehiculos");
   const [form, setForm] = useState(emptyWorkOrder);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [draftStatuses, setDraftStatuses] = useState({});
   const [filters, setFilters] = useState(emptyWorkOrderFilters);
   const filteredOrders = useMemo(
@@ -882,19 +884,36 @@ export function WorkOrdersPage() {
   const refresh = async () => {
     await Promise.all([orders.refresh(), vehicles.refresh()]);
   };
+  const reset = () => {
+    setEditingOrder(null);
+    setForm(emptyWorkOrder);
+  };
+  const edit = (order) => {
+    toast.info("Editando orden de taller.");
+    setEditingOrder(order);
+    setForm({
+      vehicleId: order.vehicleId,
+      checkInAt: dateValue(order.checkInAt),
+      checkOutAt: dateValue(order.checkOutAt),
+      type: order.type || "",
+      odometer: order.odometer ?? "",
+      description: order.description || "",
+    });
+  };
   const submit = async (event) => {
     event.preventDefault();
     try {
-      await apiFetch("/api/ordenes-taller", {
-        method: "POST",
+      await apiFetch(editingOrder ? `/api/ordenes-taller/${editingOrder.id}` : "/api/ordenes-taller", {
+        method: editingOrder ? "PUT" : "POST",
         body: {
           ...form,
           odometer: form.odometer ? Number(form.odometer) : null,
-          status: "pending",
+          checkOutAt: form.checkOutAt || null,
+          ...(!editingOrder ? { status: "pending" } : {}),
         },
       });
-      toast.success("Orden creada. El vehiculo ahora esta En taller.");
-      setForm(emptyWorkOrder);
+      toast.success(editingOrder ? "Orden actualizada." : "Orden creada.");
+      reset();
       refresh();
     } catch (value) {
       fail(value);
@@ -915,7 +934,7 @@ export function WorkOrdersPage() {
       });
       toast.success(
         status === "completed"
-          ? "Orden completada. El vehiculo esta Disponible."
+          ? "Orden completada. Se actualizó la disponibilidad del vehículo."
           : "Estado de orden actualizado.",
       );
       refresh();
@@ -946,7 +965,8 @@ export function WorkOrdersPage() {
       <div className="row g-4">
         <div className="col-lg-4">
           <form className="card card-body shadow-sm" onSubmit={submit}>
-            <h2 className="h5">Nueva orden</h2>
+            <h2 className="h5">{editingOrder ? "Editar orden" : "Nueva orden"}</h2>
+            <p className="small text-muted">Se puede registrar una reparación durante un viaje; la unidad seguirá figurando En viaje hasta que termine.</p>
             <FormField label="Vehículo *"><select
               className="form-select"
               value={form.vehicleId}
@@ -958,14 +978,11 @@ export function WorkOrdersPage() {
               <option value="">Seleccionar vehículo</option>
               {vehicles.items
                 .filter(
-                  (vehicle) =>
-                    vehicle.status === "available" ||
-                    vehicle.status === "in_service" ||
-                    vehicle.status === "maintenance",
+                  (vehicle) => vehicle.status !== "inactive" || vehicle.id === form.vehicleId,
                 )
                 .map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
-                    {vehicle.licensePlate}
+                    {vehicle.licensePlate}{vehicle.status === "in_trip" ? " · En viaje" : ""}
                   </option>
                 ))}
             </select></FormField>
@@ -978,6 +995,12 @@ export function WorkOrdersPage() {
               }
               required
             /></FormField>
+            {editingOrder && <FormField label="Fecha de finalización"><input
+              className="form-control"
+              type="date"
+              value={form.checkOutAt}
+              onChange={(event) => setForm({ ...form, checkOutAt: event.target.value })}
+            /></FormField>}
             <FormField label="Tipo de trabajo"><input
               className="form-control"
               value={form.type}
@@ -1002,7 +1025,10 @@ export function WorkOrdersPage() {
               }
               required
             /></FormField>
-            <button className="btn btn-primary">Crear orden</button>
+            <div className="d-flex gap-2">
+              <button className="btn btn-primary">{editingOrder ? "Guardar cambios" : "Crear orden"}</button>
+              {editingOrder && <button type="button" className="btn btn-outline-secondary" onClick={reset}>Cancelar</button>}
+            </div>
           </form>
         </div>
         <div className="col-lg-8">
@@ -1117,6 +1143,7 @@ export function WorkOrdersPage() {
                       >
                         Detalle
                       </button>
+                      <button className="btn btn-sm btn-outline-primary me-1" onClick={() => edit(order)}>Editar</button>
                       {!["completed", "cancelled"].includes(order.status) && (
                         <>
                           <select
