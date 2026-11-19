@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { useAuth } from "../../context/useAuth";
 import { apiFetch } from "../../services/api";
 import { confirmToast } from "../ConfirmationToast";
 import FormField from "../FormField";
+import { RecordFilters, RecordFormScreen, RecordListHeader } from "./RecordScreens";
+import useRecordEditor from "./useRecordEditor";
 
 const statuses = {
   pending: "Pendiente",
@@ -42,6 +45,30 @@ const emptyWorkOrder = {
   odometer: "",
   description: "",
 };
+const tripToForm = (trip) => ({
+  customerId: trip.customerId || "",
+  trailerVehicleId: trip.trailerVehicleId || "",
+  truckVehicleId: trip.truckVehicleId || "",
+  driverId: trip.driverId || "",
+  origin: trip.origin || "",
+  destination: trip.destination || "",
+  departureAt: dateValue(trip.departureAt),
+  unloadingAt: dateValue(trip.unloadingAt),
+  arrivalAt: dateValue(trip.arrivalAt),
+  cargoType: trip.cargoType || "refrigerated",
+  containerNumber: trip.containerNumber || "",
+  rotation: trip.rotation || "",
+  notes: trip.notes || "",
+  status: trip.status,
+});
+const workOrderToForm = (order) => ({
+  vehicleId: order.vehicleId,
+  checkInAt: dateValue(order.checkInAt),
+  checkOutAt: dateValue(order.checkOutAt),
+  type: order.type || "",
+  odometer: order.odometer ?? "",
+  description: order.description || "",
+});
 const createIdempotencyKey = () =>
   window.crypto?.randomUUID?.() ||
   `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -64,11 +91,12 @@ const emptyWorkOrderFilters = {
   dateTo: "",
 };
 
-const useCollection = (endpoint) => {
+const useCollection = (endpoint, enabled = true) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     setLoading(true);
     setError(null);
     try {
@@ -79,22 +107,28 @@ const useCollection = (endpoint) => {
     } finally {
       setLoading(false);
     }
-  }, [endpoint]);
+  }, [enabled, endpoint]);
   useEffect(() => {
     refresh();
   }, [refresh]);
-  return { items, loading, error, refresh };
+  return { items, loading: enabled && loading, error, refresh };
 };
 
 export function TripsPage() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const trips = useCollection("/api/viajes");
-  const customers = useCollection("/api/clientes");
-  const vehicles = useCollection("/api/vehiculos");
-  const drivers = useCollection("/api/choferes");
-  const [form, setForm] = useState(emptyTrip);
-  const [editing, setEditing] = useState(null);
-  const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
+  const customers = useCollection("/api/clientes", hasPermission("customers.read"));
+  const vehicles = useCollection("/api/vehiculos", hasPermission("vehicles.read"));
+  const drivers = useCollection("/api/choferes", hasPermission("drivers.read"));
+  const canCreate = hasPermission("trips.create");
+  const canUpdate = hasPermission("trips.update");
+  const canCancel = hasPermission("trips.cancel");
+  const editor = useRecordEditor("/viajes", "/api/viajes", {
+    canCreate, canUpdate, emptyForm: emptyTrip, toForm: tripToForm,
+  });
+  const { editing, form, setForm } = editor;
+  const idempotencyKey = useRef(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLock = useRef(false);
   const [truckAssignments, setTruckAssignments] = useState({});
@@ -178,11 +212,6 @@ export function TripsPage() {
 
   const set = (field, value) =>
     setForm((current) => ({ ...current, [field]: value }));
-  const reset = () => {
-    setEditing(null);
-    setForm(emptyTrip);
-    setIdempotencyKey(createIdempotencyKey());
-  };
   const setFilter = (field, value) =>
     setFilters((current) => ({ ...current, [field]: value }));
   const selectOptions = (items, selectedId) =>
@@ -223,14 +252,18 @@ export function TripsPage() {
         await apiFetch(`/api/viajes/${editing.id}`, { method: "PUT", body });
         toast.success("Viaje actualizado.");
       } else {
+        if (idempotencyKey.current?.routeKey !== editor.key) {
+          idempotencyKey.current = { routeKey: editor.key, value: createIdempotencyKey() };
+        }
         await apiFetch("/api/viajes", {
           method: "POST",
-          headers: { "Idempotency-Key": idempotencyKey },
+          headers: { "Idempotency-Key": idempotencyKey.current.value },
           body: { ...body, status: "pending" },
         });
+        idempotencyKey.current = null;
         toast.success("Viaje creado. El remolque quedó En viaje.");
       }
-      reset();
+      editor.close();
       await refresh();
     } catch (value) {
       fail(value);
@@ -238,26 +271,6 @@ export function TripsPage() {
       submitLock.current = false;
       setIsSubmitting(false);
     }
-  };
-  const edit = (trip) => {
-    toast.info("Editando viaje.");
-    setEditing(trip);
-    setForm({
-      customerId: trip.customerId || "",
-      trailerVehicleId: trip.trailerVehicleId || "",
-      truckVehicleId: trip.truckVehicleId || "",
-      driverId: trip.driverId || "",
-      origin: trip.origin || "",
-      destination: trip.destination || "",
-      departureAt: dateValue(trip.departureAt),
-      unloadingAt: dateValue(trip.unloadingAt),
-      arrivalAt: dateValue(trip.arrivalAt),
-      cargoType: trip.cargoType || "refrigerated",
-      containerNumber: trip.containerNumber || "",
-      rotation: trip.rotation || "",
-      notes: trip.notes || "",
-      status: trip.status,
-    });
   };
   const updateTrip = async (id, body, message) => {
     toast.info("Actualizando viaje...");
@@ -304,18 +317,9 @@ export function TripsPage() {
       },
     );
 
-  return (
-    <>
-      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-        <h1 className="h3 mb-0">Viajes</h1>
-        <button className="btn btn-outline-primary" onClick={refresh}>
-          Actualizar
-        </button>
-      </div>
-      <div className="row g-4">
-        <div className="col-lg-4">
+  if (editor.isForm) return (
+    <RecordFormScreen editor={editor} createTitle="Nuevo viaje" editTitle="Editar viaje">
           <form className="card card-body shadow-sm" onSubmit={submit}>
-            <h2 className="h5">{editing ? "Editar viaje" : "Nuevo viaje"}</h2>
             <div className="mb-3">
               <label
                 className="form-label small fw-semibold"
@@ -591,7 +595,7 @@ export function TripsPage() {
                 )}
               </>
             )}
-            <div className="d-flex gap-2">
+            <div className="d-flex flex-wrap gap-2">
               <button
                 className="btn btn-primary"
                 type="submit"
@@ -605,21 +609,23 @@ export function TripsPage() {
                     ? "Guardar cambios"
                     : "Crear viaje"}
               </button>
-              {editing && (
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={reset}
-                  disabled={isSubmitting}
-                >
-                  Cancelar
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={editor.close}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </button>
             </div>
           </form>
-        </div>
-        <div className="col-lg-8">
-          <div className="card card-body shadow-sm mb-3">
+    </RecordFormScreen>
+  );
+  return (
+    <>
+      <RecordListHeader title="Viajes" onRefresh={refresh} createLabel="Nuevo viaje" onCreate={canCreate ? () => editor.open() : undefined} />
+      <div>
+          <RecordFilters>
             <div className="row g-2">
               <div className="col-md-6">
                 <label className="form-label small fw-semibold" htmlFor="trip-filter-origin">Origen</label>
@@ -725,7 +731,7 @@ export function TripsPage() {
             >
               Limpiar filtros
             </button>
-          </div>
+          </RecordFilters>
           <div className="card shadow-sm table-responsive">
             <table className="table mb-0">
               <thead>
@@ -770,7 +776,7 @@ export function TripsPage() {
                       >
                         Detalle
                       </button>
-                      {trip.status === "pending" && !trip.truckVehicleId && (
+                      {canUpdate && trip.status === "pending" && !trip.truckVehicleId && (
                         <div className="d-flex gap-1 mb-1">
                           <select
                             className="form-select form-select-sm"
@@ -797,13 +803,13 @@ export function TripsPage() {
                           </button>
                         </div>
                       )}
-                      <button
+                      {canUpdate && <button
                         className="btn btn-sm btn-outline-primary me-1 mb-1"
-                        onClick={() => edit(trip)}
+                        onClick={() => editor.open(trip.id)}
                       >
                         Editar
-                      </button>
-                      {trip.status === "pending" && (
+                      </button>}
+                      {canUpdate && trip.status === "pending" && (
                         <button
                           className="btn btn-sm btn-success me-1 mb-1"
                           onClick={() => start(trip)}
@@ -811,7 +817,7 @@ export function TripsPage() {
                           Iniciar
                         </button>
                       )}
-                      {trip.status === "in_progress" && (
+                      {canUpdate && trip.status === "in_progress" && (
                         <button
                           className="btn btn-sm btn-success me-1 mb-1"
                           onClick={() => complete(trip)}
@@ -819,7 +825,7 @@ export function TripsPage() {
                           Completar
                         </button>
                       )}
-                      {!["completed", "cancelled"].includes(trip.status) && (
+                      {canCancel && !["completed", "cancelled"].includes(trip.status) && (
                         <button
                           className="btn btn-sm btn-outline-danger mb-1"
                           onClick={() => cancel(trip)}
@@ -840,7 +846,6 @@ export function TripsPage() {
               </tbody>
             </table>
           </div>
-        </div>
       </div>
     </>
   );
@@ -848,10 +853,15 @@ export function TripsPage() {
 
 export function WorkOrdersPage() {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const orders = useCollection("/api/ordenes-taller");
-  const vehicles = useCollection("/api/vehiculos");
-  const [form, setForm] = useState(emptyWorkOrder);
-  const [editingOrder, setEditingOrder] = useState(null);
+  const vehicles = useCollection("/api/vehiculos", hasPermission("vehicles.read"));
+  const canCreate = hasPermission("work_orders.create");
+  const canUpdate = hasPermission("work_orders.update");
+  const editor = useRecordEditor("/taller", "/api/ordenes-taller", {
+    canCreate, canUpdate, emptyForm: emptyWorkOrder, toForm: workOrderToForm,
+  });
+  const { editing: editingOrder, form, setForm } = editor;
   const [draftStatuses, setDraftStatuses] = useState({});
   const [filters, setFilters] = useState(emptyWorkOrderFilters);
   const filteredOrders = useMemo(
@@ -884,22 +894,6 @@ export function WorkOrdersPage() {
   const refresh = async () => {
     await Promise.all([orders.refresh(), vehicles.refresh()]);
   };
-  const reset = () => {
-    setEditingOrder(null);
-    setForm(emptyWorkOrder);
-  };
-  const edit = (order) => {
-    toast.info("Editando orden de taller.");
-    setEditingOrder(order);
-    setForm({
-      vehicleId: order.vehicleId,
-      checkInAt: dateValue(order.checkInAt),
-      checkOutAt: dateValue(order.checkOutAt),
-      type: order.type || "",
-      odometer: order.odometer ?? "",
-      description: order.description || "",
-    });
-  };
   const submit = async (event) => {
     event.preventDefault();
     try {
@@ -913,7 +907,7 @@ export function WorkOrdersPage() {
         },
       });
       toast.success(editingOrder ? "Orden actualizada." : "Orden creada.");
-      reset();
+      editor.close();
       refresh();
     } catch (value) {
       fail(value);
@@ -954,18 +948,9 @@ export function WorkOrdersPage() {
     });
   const setFilter = (field, value) =>
     setFilters((current) => ({ ...current, [field]: value }));
-  return (
-    <>
-      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-        <h1 className="h3 mb-0">Ordenes de taller</h1>
-        <button className="btn btn-outline-primary" onClick={refresh}>
-          Actualizar
-        </button>
-      </div>
-      <div className="row g-4">
-        <div className="col-lg-4">
+  if (editor.isForm) return (
+    <RecordFormScreen editor={editor} createTitle="Nueva orden" editTitle="Editar orden">
           <form className="card card-body shadow-sm" onSubmit={submit}>
-            <h2 className="h5">{editingOrder ? "Editar orden" : "Nueva orden"}</h2>
             <p className="small text-muted">Se puede registrar una reparación durante un viaje; la unidad seguirá figurando En viaje hasta que termine.</p>
             <FormField label="Vehículo *"><select
               className="form-select"
@@ -1025,14 +1010,18 @@ export function WorkOrdersPage() {
               }
               required
             /></FormField>
-            <div className="d-flex gap-2">
+            <div className="d-flex flex-wrap gap-2">
               <button className="btn btn-primary">{editingOrder ? "Guardar cambios" : "Crear orden"}</button>
-              {editingOrder && <button type="button" className="btn btn-outline-secondary" onClick={reset}>Cancelar</button>}
+              <button type="button" className="btn btn-outline-secondary" onClick={editor.close}>Cancelar</button>
             </div>
           </form>
-        </div>
-        <div className="col-lg-8">
-          <div className="card card-body shadow-sm mb-3">
+    </RecordFormScreen>
+  );
+  return (
+    <>
+      <RecordListHeader title="Órdenes de taller" onRefresh={refresh} createLabel="Nueva orden" onCreate={canCreate ? () => editor.open() : undefined} />
+      <div>
+          <RecordFilters>
             <div className="row g-2">
               <div className="col-md-5">
                 <label className="form-label small fw-semibold" htmlFor="work-order-search">Buscar orden</label>
@@ -1117,7 +1106,7 @@ export function WorkOrdersPage() {
             >
               Limpiar filtros
             </button>
-          </div>
+          </RecordFilters>
           <div className="card shadow-sm table-responsive">
             <table className="table mb-0">
               <thead>
@@ -1143,8 +1132,8 @@ export function WorkOrdersPage() {
                       >
                         Detalle
                       </button>
-                      <button className="btn btn-sm btn-outline-primary me-1" onClick={() => edit(order)}>Editar</button>
-                      {!["completed", "cancelled"].includes(order.status) && (
+                      {canUpdate && <button className="btn btn-sm btn-outline-primary me-1" onClick={() => editor.open(order.id)}>Editar</button>}
+                      {canUpdate && !["completed", "cancelled"].includes(order.status) && (
                         <>
                           <select
                             className="form-select form-select-sm d-inline-block w-auto me-1"
@@ -1187,7 +1176,6 @@ export function WorkOrdersPage() {
               </tbody>
             </table>
           </div>
-        </div>
       </div>
     </>
   );

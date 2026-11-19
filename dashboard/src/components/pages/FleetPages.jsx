@@ -1,47 +1,64 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import { useAuth } from "../../context/useAuth";
 import { apiFetch } from "../../services/api";
 import { confirmToast } from "../ConfirmationToast";
 import FormField from "../FormField";
+import { RecordFilters, RecordFormScreen, RecordListHeader } from "./RecordScreens";
+import useRecordEditor from "./useRecordEditor";
 
 const vehicleStatusLabels = { available: "Disponible", in_trip: "En viaje", in_service: "En servicio", maintenance: "En taller", inactive: "Inactivo" };
 const tripStatusLabels = { pending: "Pendiente", in_progress: "En curso", completed: "Completado", cancelled: "Cancelado" };
 const emptyVehicle = { licensePlate: "", type: "truck", brand: "", model: "", year: "", currentDriverId: "", status: "available" };
+const vehicleToForm = (vehicle) => ({
+  licensePlate: vehicle.licensePlate || "", type: vehicle.type || "truck", brand: vehicle.brand || "",
+  model: vehicle.model || "", year: vehicle.year || "", currentDriverId: vehicle.currentDriverId || "",
+  status: vehicle.status || "available",
+});
 const displayDate = (value) => {
   const [year, month, day] = String(value || "").slice(0, 10).split("-");
   return year ? `${day}/${month}/${year}` : "-";
 };
 const fail = (value) => toast.error(value.message || "No se pudo completar la solicitud.");
 
-const useVehicles = () => {
+const useVehicles = (canReadDrivers) => {
   const [items, setItems] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const refresh = useCallback(async () => {
     try {
-      const [vehiclesData, driversData] = await Promise.all([apiFetch("/api/vehiculos"), apiFetch("/api/choferes")]);
+      const [vehiclesData, driversData] = await Promise.all([
+        apiFetch("/api/vehiculos"),
+        canReadDrivers ? apiFetch("/api/choferes").catch((error) => { fail(error); return []; }) : [],
+      ]);
       setItems(vehiclesData);
       setDrivers(driversData);
     } catch (value) { fail(value); }
-  }, []);
+  }, [canReadDrivers]);
   useEffect(() => { refresh(); }, [refresh]);
   return { items, drivers, refresh };
 };
 
 export function VehiclesPage() {
   const navigate = useNavigate();
-  const { items, drivers, refresh } = useVehicles();
-  const [form, setForm] = useState(emptyVehicle);
-  const [editing, setEditing] = useState(null);
+  const { hasPermission } = useAuth();
+  const { items, drivers, refresh } = useVehicles(hasPermission("drivers.read"));
+  const canCreate = hasPermission("vehicles.create");
+  const canUpdate = hasPermission("vehicles.update");
+  const canDelete = hasPermission("vehicles.delete");
+  const editor = useRecordEditor("/vehiculos", "/api/vehiculos", {
+    canCreate, canUpdate, emptyForm: emptyVehicle, toForm: vehicleToForm,
+  });
+  const { editing, form, setForm } = editor;
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const driversForForm = useMemo(() => {
     const active = drivers.filter((driver) => driver.status === "active");
-    return active.some((driver) => driver.id === form.currentDriverId)
-      ? active
-      : [...active, ...drivers.filter((driver) => driver.id === form.currentDriverId)];
-  }, [drivers, form.currentDriverId]);
+    if (!form.currentDriverId || active.some((driver) => driver.id === form.currentDriverId)) return active;
+    const assigned = drivers.find((driver) => driver.id === form.currentDriverId) || editing?.currentDriver;
+    return [...active, assigned || { id: form.currentDriverId, fullName: "Chofer actual" }];
+  }, [drivers, editing, form.currentDriverId]);
   const filteredItems = useMemo(() => items.filter((vehicle) => {
     const searchable = `${vehicle.licensePlate} ${vehicle.brand || ""} ${vehicle.model || ""}`.toLowerCase();
     return (!search || searchable.includes(search.toLowerCase()))
@@ -49,27 +66,20 @@ export function VehiclesPage() {
       && (!statusFilter || vehicle.status === statusFilter);
   }), [items, search, typeFilter, statusFilter]);
   const set = (field, value) => setForm((current) => ({ ...current, [field]: value }));
-  const reset = () => { setEditing(null); setForm(emptyVehicle); };
-  const edit = (vehicle) => {
-    toast.info("Editando vehículo.");
-    setEditing(vehicle);
-    setForm({ licensePlate: vehicle.licensePlate || "", type: vehicle.type || "truck", brand: vehicle.brand || "", model: vehicle.model || "", year: vehicle.year || "", currentDriverId: vehicle.currentDriverId || "", status: vehicle.status || "available" });
-  };
   const submit = async (event) => {
     event.preventDefault();
     try {
       if (editing) { toast.info("Actualizando vehículo..."); await apiFetch(`/api/vehiculos/${editing.id}`, { method: "PUT", body: form }); toast.success("Vehiculo actualizado."); }
       else { await apiFetch("/api/vehiculos", { method: "POST", body: form }); toast.success("Vehiculo creado."); }
-      reset(); refresh();
+      editor.close(); refresh();
     } catch (value) { fail(value); }
   };
   const deactivate = (vehicle) => confirmToast(`¿Dar de baja el vehículo ${vehicle.licensePlate}?`, async () => {
     try { await apiFetch(`/api/vehiculos/${vehicle.id}`, { method: "DELETE" }); toast.success("Vehiculo dado de baja."); refresh(); } catch (value) { fail(value); }
   });
-  return <>
-    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4"><h1 className="h3 mb-0">Vehículos</h1><button className="btn btn-outline-primary" onClick={refresh}>Actualizar</button></div>
-    <div className="row g-4"><div className="col-lg-4"><form className="card card-body shadow-sm" onSubmit={submit}>
-      <h2 className="h5">{editing ? "Editar vehículo" : "Nuevo vehículo"}</h2>
+  if (editor.isForm) return (
+    <RecordFormScreen editor={editor} createTitle="Nuevo vehículo" editTitle="Editar vehículo">
+      <form className="card card-body shadow-sm" onSubmit={submit}>
       <FormField label="Matrícula *"><input className="form-control" value={form.licensePlate} onChange={(event) => set("licensePlate", event.target.value)} required /></FormField>
       <FormField label="Tipo"><select className="form-select" value={form.type} onChange={(event) => set("type", event.target.value)} required><option value="truck">Camión</option><option value="trailer">Remolque</option></select></FormField>
       <FormField label="Marca"><input className="form-control" value={form.brand} onChange={(event) => set("brand", event.target.value)} /></FormField>
@@ -78,12 +88,18 @@ export function VehiclesPage() {
       <FormField label="Chofer asignado"><select className="form-select" value={form.currentDriverId} onChange={(event) => set("currentDriverId", event.target.value)}><option value="">Sin chofer asignado</option>{driversForForm.map((driver) => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}</select></FormField>
       <FormField label="Estado"><select className="form-select" value={form.status} disabled={form.status === "in_trip"} onChange={(event) => set("status", event.target.value)}>{Object.entries(vehicleStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FormField>
       {form.status === "in_trip" && <div className="small text-muted mb-3">El estado En viaje solo se modifica desde el viaje.</div>}
-      <div className="d-flex gap-2"><button className="btn btn-primary">{editing ? "Guardar cambios" : "Crear vehículo"}</button>{editing && <button type="button" className="btn btn-outline-secondary" onClick={reset}>Cancelar</button>}</div>
-    </form></div><div className="col-lg-8"><div className="card card-body shadow-sm mb-3"><div className="row g-2">
+        <div className="d-flex flex-wrap gap-2"><button className="btn btn-primary">{editing ? "Guardar cambios" : "Crear vehículo"}</button><button type="button" className="btn btn-outline-secondary" onClick={editor.close}>Cancelar</button></div>
+      </form>
+    </RecordFormScreen>
+  );
+  return <>
+    <RecordListHeader title="Vehículos" onRefresh={refresh} createLabel="Nuevo vehículo" onCreate={canCreate ? () => editor.open() : undefined} />
+    <RecordFilters><div className="row g-2">
       <div className="col-md-5"><FormField label="Buscar vehículo"><input className="form-control" placeholder="Matrícula, marca o modelo" value={search} onChange={(event) => setSearch(event.target.value)} /></FormField></div>
       <div className="col-md-4"><FormField label="Tipo"><select className="form-select" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="">Todos los tipos</option><option value="truck">Camiones</option><option value="trailer">Remolques</option></select></FormField></div>
       <div className="col-md-3"><FormField label="Estado"><select className="form-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Todos los estados</option>{Object.entries(vehicleStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></FormField></div>
-    </div></div><div className="card shadow-sm table-responsive"><table className="table mb-0"><thead><tr><th>Matricula</th><th>Tipo</th><th>Marca / modelo</th><th>Año</th><th>Estado</th><th>Chofer</th><th>Acciones</th></tr></thead><tbody>{filteredItems.map((vehicle) => <tr key={vehicle.id}><td>{vehicle.licensePlate}</td><td>{vehicle.type === "truck" ? "Camion" : "Remolque"}</td><td>{[vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "-"}</td><td>{vehicle.year || "-"}</td><td>{vehicleStatusLabels[vehicle.status] || vehicle.status}</td><td>{vehicle.currentDriver?.fullName || "-"}</td><td className="text-nowrap"><button className="btn btn-sm btn-outline-secondary me-1" onClick={() => navigate(`/vehiculos/${vehicle.id}`)}>Detalle</button><button className="btn btn-sm btn-outline-primary me-1" onClick={() => edit(vehicle)}>Editar</button>{vehicle.status !== "in_trip" && vehicle.status !== "inactive" && <button className="btn btn-sm btn-outline-danger" onClick={() => deactivate(vehicle)}>Baja</button>}</td></tr>)}{!filteredItems.length && <tr><td colSpan="7" className="text-muted">No hay vehiculos que coincidan con los filtros.</td></tr>}</tbody></table></div></div></div>
+    </div></RecordFilters>
+    <div className="card shadow-sm table-responsive"><table className="table mb-0"><thead><tr><th>Matricula</th><th>Tipo</th><th>Marca / modelo</th><th>Año</th><th>Estado</th><th>Chofer</th><th>Acciones</th></tr></thead><tbody>{filteredItems.map((vehicle) => <tr key={vehicle.id}><td>{vehicle.licensePlate}</td><td>{vehicle.type === "truck" ? "Camion" : "Remolque"}</td><td>{[vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "-"}</td><td>{vehicle.year || "-"}</td><td>{vehicleStatusLabels[vehicle.status] || vehicle.status}</td><td>{vehicle.currentDriver?.fullName || "-"}</td><td className="text-nowrap"><button className="btn btn-sm btn-outline-secondary me-1" onClick={() => navigate(`/vehiculos/${vehicle.id}`)}>Detalle</button>{canUpdate && <button className="btn btn-sm btn-outline-primary me-1" onClick={() => editor.open(vehicle.id)}>Editar</button>}{canDelete && vehicle.status !== "in_trip" && vehicle.status !== "inactive" && <button className="btn btn-sm btn-outline-danger" onClick={() => deactivate(vehicle)}>Baja</button>}</td></tr>)}{!filteredItems.length && <tr><td colSpan="7" className="text-muted">No hay vehiculos que coincidan con los filtros.</td></tr>}</tbody></table></div>
   </>;
 }
 

@@ -6,6 +6,8 @@ import { apiFetch } from "../../services/api";
 import { changeOwnPassword } from "../../services/auth";
 import { confirmToast } from "../ConfirmationToast";
 import FormField from "../FormField";
+import { RecordFormScreen, RecordListHeader } from "./RecordScreens";
+import useRecordEditor from "./useRecordEditor";
 
 const roleLabels = {
   Administrator: "Administrador",
@@ -20,6 +22,13 @@ const emptyUserForm = {
   status: "active",
   roleIds: [],
 };
+const userToForm = (item) => ({
+  fullName: item.fullName,
+  email: item.email,
+  password: "",
+  status: item.status,
+  roleIds: item.roles.map((role) => role.id),
+});
 
 const fail = (value) => toast.error(value.message || "No se pudo completar la solicitud.");
 const userStatus = (value) => value === "active" ? "Activo" : "Inactivo";
@@ -30,8 +39,11 @@ export function UserAdministrationPage() {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [audit, setAudit] = useState([]);
-  const [form, setForm] = useState(emptyUserForm);
-  const [editing, setEditing] = useState(null);
+  const canManage = hasPermission("users.manage");
+  const editor = useRecordEditor("/admin", "/api/admin/users", {
+    canCreate: canManage, canUpdate: canManage, emptyForm: emptyUserForm, toForm: userToForm,
+  });
+  const { editing, form, setForm } = editor;
 
   const load = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -49,23 +61,6 @@ export function UserAdministrationPage() {
   }, [hasPermission]);
 
   useEffect(() => { load(); }, [load]);
-
-  const cancel = () => {
-    setEditing(null);
-    setForm(emptyUserForm);
-  };
-
-  const startEdit = (item) => {
-    toast.info("Editando usuario.");
-    setEditing(item);
-    setForm({
-      fullName: item.fullName,
-      email: item.email,
-      password: "",
-      status: item.status,
-      roleIds: item.roles.map((role) => role.id),
-    });
-  };
 
   const toggleRole = (roleId) => setForm((current) => ({
     ...current,
@@ -99,7 +94,7 @@ export function UserAdministrationPage() {
         await apiFetch("/api/admin/users", { method: "POST", body: form });
         toast.success("Usuario creado.");
       }
-      cancel();
+      editor.close();
       load();
     } catch (value) {
       fail(value);
@@ -116,19 +111,9 @@ export function UserAdministrationPage() {
     }
   });
 
-  return <>
-    <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-      <h1 className="h3 mb-0">Administracion de organizacion</h1>
-      <button className="btn btn-outline-primary" onClick={load}>Actualizar</button>
-    </div>
-    {organization && <div className="card card-body shadow-sm mb-4">
-      <strong>{organization.name}</strong>
-      <span className="text-muted">Plan {organization.planCode} · {organization.status === "active" ? "Activo" : "Suspendido"}</span>
-    </div>}
-    <div className="row g-4">
-      <div className="col-lg-4">
+  if (editor.isForm) return (
+    <RecordFormScreen editor={editor} createTitle="Nuevo usuario" editTitle="Editar usuario">
         <form className="card card-body shadow-sm" onSubmit={submit}>
-          <h2 className="h5">{editing ? "Editar usuario" : "Nuevo usuario"}</h2>
           <FormField label="Nombre completo"><input className="form-control" value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} required /></FormField>
           <FormField label="Correo electrónico"><input className="form-control" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></FormField>
           {editing?.id !== user.id && <FormField label={editing ? "Nueva contraseña (opcional)" : "Contraseña (mínimo 8 caracteres)"}><input className="form-control" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required={!editing} minLength="8" autoComplete="new-password" /></FormField>}
@@ -143,13 +128,17 @@ export function UserAdministrationPage() {
               <span className="form-check-label">{roleLabels[role.name] || role.name}</span>
             </label>)}
           </fieldset>}
-          <div className="d-flex gap-2">
+          <div className="d-flex flex-wrap gap-2">
             <button className="btn btn-primary">{editing ? "Guardar cambios" : "Crear usuario"}</button>
-            {editing && <button type="button" className="btn btn-outline-secondary" onClick={cancel}>Cancelar</button>}
+            <button type="button" className="btn btn-outline-secondary" onClick={editor.close}>Cancelar</button>
           </div>
         </form>
-      </div>
-      <div className="col-lg-8">
+    </RecordFormScreen>
+  );
+  return <>
+    <RecordListHeader title="Administración de organización" onRefresh={load} createLabel="Nuevo usuario" onCreate={() => editor.open()} />
+    <div className="row g-4">
+      <div className="col-12">
         <div className="card shadow-sm table-responsive">
           <div className="card-header">Usuarios</div>
           <table className="table mb-0">
@@ -157,11 +146,15 @@ export function UserAdministrationPage() {
             <tbody>{users.map((item) => <tr key={item.id}>
               <td>{item.fullName}</td><td>{item.email}</td><td>{userStatus(item.status)}</td>
               <td>{item.roles.map((role) => roleLabels[role.name] || role.name).join(", ") || "-"}</td>
-              <td className="text-nowrap"><button className="btn btn-sm btn-outline-primary me-1" onClick={() => startEdit(item)}>Editar</button>{item.id !== user.id && item.status === "active" && <button className="btn btn-sm btn-outline-danger" onClick={() => deactivate(item)}>Desactivar</button>}</td>
+              <td className="text-nowrap"><button className="btn btn-sm btn-outline-primary me-1" onClick={() => editor.open(item.id)}>Editar</button>{item.id !== user.id && item.status === "active" && <button className="btn btn-sm btn-outline-danger" onClick={() => deactivate(item)}>Desactivar</button>}</td>
             </tr>)}</tbody>
           </table>
         </div>
       </div>
+      {organization && <div className="col-12"><div className="card card-body shadow-sm">
+        <strong>{organization.name}</strong>
+        <span className="text-muted">Plan {organization.planCode} · {organization.status === "active" ? "Activo" : "Suspendido"}</span>
+      </div></div>}
       {hasPermission("audit.read") && <div className="col-12"><div className="card shadow-sm"><div className="card-header">Auditoria reciente</div><ul className="list-group list-group-flush">{audit.slice(0, 20).map((entry) => <li className="list-group-item" key={entry.id}><strong>{entry.action}</strong> · {entry.actor?.fullName || "Sistema"}</li>)}</ul></div></div>}
     </div>
   </>;
